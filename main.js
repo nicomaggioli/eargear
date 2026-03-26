@@ -1,95 +1,121 @@
-const heroImg = document.querySelector(".hero-img");
-const glare = document.querySelector(".glare");
-const introScreen = document.getElementById("intro-screen");
+// ── Scroll-driven frame animation ──
+const canvas = document.getElementById("video-canvas");
+const ctx = canvas.getContext("2d");
 const heroSection = document.getElementById("hero");
+const introScreen = document.getElementById("intro-screen");
 
-// SCROLL OBSERVER for EarGear Story
+const TOTAL_FRAMES = 121;
+const frames = [];
+let framesLoaded = 0;
+let currentFrame = 0;
+
+function resizeCanvas() {
+  const size = Math.min(700, window.innerWidth - 40, window.innerHeight - 100);
+  canvas.width = size * window.devicePixelRatio;
+  canvas.height = size * window.devicePixelRatio;
+  canvas.style.width = size + "px";
+  canvas.style.height = size + "px";
+  drawFrame(currentFrame);
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+// Preload all frames
+for (let i = 1; i <= TOTAL_FRAMES; i++) {
+  const img = new Image();
+  img.src = `frames/frame-${String(i).padStart(4, "0")}.jpg`;
+  img.onload = () => {
+    framesLoaded++;
+    // Draw first frame as soon as it loads
+    if (i === 1) drawFrame(0);
+  };
+  frames.push(img);
+}
+
+// Draw a frame (cover-fit)
+function drawFrame(index) {
+  const img = frames[index];
+  if (!img || !img.complete || !img.naturalWidth) return;
+
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+
+  const canvasRatio = cw / ch;
+  const imgRatio = iw / ih;
+
+  let sx, sy, sw, sh;
+  if (canvasRatio > imgRatio) {
+    sw = iw;
+    sh = iw / canvasRatio;
+    sx = 0;
+    sy = (ih - sh) / 2;
+  } else {
+    sh = ih;
+    sw = ih * canvasRatio;
+    sx = (iw - sw) / 2;
+    sy = 0;
+  }
+
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+}
+
+// ── Scroll handler ──
+function updateScroll() {
+  const scrollTop = document.documentElement.scrollTop;
+  const heroTop = heroSection.offsetTop;
+  const heroHeight = heroSection.offsetHeight;
+  const maxScroll = heroHeight - window.innerHeight;
+
+  let scrollFraction = (scrollTop - heroTop) / maxScroll;
+  scrollFraction = Math.max(0, Math.min(1, scrollFraction));
+
+  // Intro text fades out in first 20%
+  if (introScreen) {
+    const introOpacity = Math.max(0, 1 - scrollFraction * 5);
+    const introY = scrollFraction * 150;
+    introScreen.style.opacity = introOpacity;
+    introScreen.style.transform = `translate(-50%, calc(-50% - ${introY}px))`;
+  }
+
+  // Canvas opacity: appears at 10%, fully visible by 25%
+  const videoAppear = Math.min(1, Math.max(0, (scrollFraction - 0.1) / 0.15));
+  canvas.style.opacity = videoAppear;
+
+  // Map scroll to frame index (start at 15% scroll)
+  const frameFraction = Math.max(0, Math.min(1, (scrollFraction - 0.15) / 0.85));
+  const targetFrame = Math.min(TOTAL_FRAMES - 1, Math.floor(frameFraction * TOTAL_FRAMES));
+
+  if (targetFrame !== currentFrame) {
+    currentFrame = targetFrame;
+    requestAnimationFrame(() => drawFrame(currentFrame));
+  }
+}
+
+window.addEventListener("scroll", updateScroll, { passive: true });
+updateScroll();
+
+// ── EarGear story section ──
 const scrollSteps = document.querySelectorAll(".scroll-step");
 const eargearImages = document.querySelectorAll(".eargear-img");
 
-const observerOptions = {
-  root: null,
-  rootMargin: "-40% 0px -40% 0px", // Trigger when text is centered
-  threshold: 0
-};
-
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      const index = entry.target.getAttribute("data-index");
-      
-      // Update text opacity
-      scrollSteps.forEach(step => step.classList.remove("active"));
-      entry.target.classList.add("active");
-      
-      // Crossfade the sticky image
-      eargearImages.forEach(img => img.classList.remove("active"));
-      const targetImg = document.getElementById(`eg-img-${index}`);
-      if (targetImg) {
-        targetImg.classList.add("active");
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        const index = entry.target.getAttribute("data-index");
+        scrollSteps.forEach((step) => step.classList.remove("active"));
+        entry.target.classList.add("active");
+        eargearImages.forEach((img) => img.classList.remove("active"));
+        const targetImg = document.getElementById(`eg-img-${index}`);
+        if (targetImg) targetImg.classList.add("active");
       }
-    }
-  });
-}, observerOptions);
+    });
+  },
+  { root: null, rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+);
 
-scrollSteps.forEach(step => {
-  observer.observe(step);
-});
-
-// MAIN SCROLL EVENT
-window.addEventListener("scroll", () => {
-  // Hero section scroll calculation
-  const html = document.documentElement;
-  const scrollTop = html.scrollTop;
-  
-  const heroTop = heroSection.offsetTop;
-  const heroHeight = heroSection.offsetHeight;
-  
-  const maxHeroScroll = heroHeight - window.innerHeight;
-  let scrollFraction = (scrollTop - heroTop) / maxHeroScroll;
-  scrollFraction = Math.max(0, Math.min(1, scrollFraction));
-  
-  // 1-IMAGE MAGIC MATH
-  requestAnimationFrame(() => {
-    // Stage 1: Intro Text Fade Out (0% to 20% scroll)
-    if (introScreen) {
-      const introOpacity = Math.max(0, 1 - (scrollFraction * 5));
-      const introY = scrollFraction * 150; // text slightly moves up
-      introScreen.style.opacity = introOpacity;
-      introScreen.style.transform = `translate(-50%, calc(-50% - ${introY}px))`;
-    }
-
-    if (heroImg && glare) {
-      // Stage 2: Case appears and light sweeps (20% to 100% scroll)
-      let caseProgress = (scrollFraction - 0.2) / 0.8;
-      caseProgress = Math.max(0, Math.min(1, caseProgress));
-
-      if (scrollFraction < 0.2) {
-        heroImg.style.opacity = 0;
-        glare.style.opacity = 0;
-      } else {
-        // 1. Camera Zoom out
-        const scale = 1.3 - (caseProgress * 0.3);
-        
-        // 2. Camera Blur
-        const blur = Math.max(0, 10 - (caseProgress * 20));
-        
-        // 3. Opacity fade in
-        const opacity = Math.min(1, caseProgress * 3); // fades in fast
-        
-        // Apply transforms
-        heroImg.style.transform = `scale(${scale})`;
-        heroImg.style.filter = `blur(${blur}px)`;
-        heroImg.style.opacity = opacity;
-        glare.style.opacity = 1;
-        
-        // 4. Studio Light Sweep
-        const glarePos = -100 + (caseProgress * 200);
-        const glareOpacity = Math.max(0, Math.sin(caseProgress * Math.PI) * 0.9);
-        
-        glare.style.transform = `translateX(${glarePos}%)`;
-        glare.style.background = `linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, ${glareOpacity}) 48%, rgba(255, 255, 255, ${glareOpacity}) 52%, transparent 60%)`;
-      }
-    }
-  });
-});
+scrollSteps.forEach((step) => observer.observe(step));
