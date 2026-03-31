@@ -4,7 +4,7 @@ const ctx = canvas.getContext("2d");
 const heroSection = document.getElementById("hero");
 const introScreen = document.getElementById("intro-screen");
 
-const TOTAL_FRAMES = 121;
+const TOTAL_FRAMES = 242;
 const frames = [];
 let framesLoaded = 0;
 let currentFrame = 0;
@@ -33,7 +33,7 @@ for (let i = 1; i <= TOTAL_FRAMES; i++) {
   frames.push(img);
 }
 
-// Draw a frame (cover-fit)
+// Draw a frame (contain-fit with padding so edges aren't cut off)
 function drawFrame(index) {
   const img = frames[index];
   if (!img || !img.complete || !img.naturalWidth) return;
@@ -43,24 +43,15 @@ function drawFrame(index) {
   const iw = img.naturalWidth;
   const ih = img.naturalHeight;
 
-  const canvasRatio = cw / ch;
-  const imgRatio = iw / ih;
-
-  let sx, sy, sw, sh;
-  if (canvasRatio > imgRatio) {
-    sw = iw;
-    sh = iw / canvasRatio;
-    sx = 0;
-    sy = (ih - sh) / 2;
-  } else {
-    sh = ih;
-    sw = ih * canvasRatio;
-    sx = (iw - sw) / 2;
-    sy = 0;
-  }
+  // Contain-fit: show full image without cropping
+  const scale = Math.min(cw / iw, ch / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const dx = (cw - dw) / 2;
+  const dy = (ch - dh) / 2;
 
   ctx.clearRect(0, 0, cw, ch);
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+  ctx.drawImage(img, 0, 0, iw, ih, dx, dy, dw, dh);
 }
 
 // ── Scroll handler ──
@@ -87,7 +78,25 @@ function updateScroll() {
 
   // Map scroll to frame index (start at 15% scroll)
   const frameFraction = Math.max(0, Math.min(1, (scrollFraction - 0.15) / 0.85));
-  const targetFrame = Math.min(TOTAL_FRAMES - 1, Math.floor(frameFraction * TOTAL_FRAMES));
+
+  // Speed through frames 176-191 (ugly hook transition)
+  const SKIP_START = 175;
+  const SKIP_END = 191;
+  const SKIP_COUNT = SKIP_END - SKIP_START;
+  const NORMAL_COUNT = TOTAL_FRAMES - SKIP_COUNT;
+  const SPEED_FACTOR = 5;
+  const totalWeight = NORMAL_COUNT + SKIP_COUNT / SPEED_FACTOR;
+  const scrollPos = frameFraction * totalWeight;
+
+  let targetFrame;
+  if (scrollPos <= SKIP_START) {
+    targetFrame = Math.floor(scrollPos);
+  } else if (scrollPos <= SKIP_START + SKIP_COUNT / SPEED_FACTOR) {
+    targetFrame = SKIP_START + Math.floor((scrollPos - SKIP_START) * SPEED_FACTOR);
+  } else {
+    targetFrame = SKIP_END + Math.floor(scrollPos - SKIP_START - SKIP_COUNT / SPEED_FACTOR);
+  }
+  targetFrame = Math.min(TOTAL_FRAMES - 1, Math.max(0, targetFrame));
 
   if (targetFrame !== currentFrame) {
     currentFrame = targetFrame;
